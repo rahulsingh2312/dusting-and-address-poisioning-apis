@@ -29,7 +29,7 @@ export default function Home() {
     try {
       const response = await fetch(`/api/dusting?address=${address}`);
       if (!response.ok) {
-        throw new Error('Failed to analyze wallet');
+        throw new Error('Failed to analyze wallet please try again or contact @rrahulol on x for premium service');
       }
       const data = await response.json();
       setResults(data);
@@ -39,8 +39,8 @@ export default function Home() {
         setError(err.message);
         setToast({ open: true, message: err.message, type: 'error' });
       } else {
-        setError('An unknown error occurred');
-        setToast({ open: true, message: 'An unknown error occurred', type: 'error' });
+        setError('An unknown error occurred please try again or contact @rrahulol on x for premium service');
+        setToast({ open: true, message: 'An unknown error occurred please try again or contact @rrahulol on x for premium service ', type: 'error' });
       }
     } finally {
       setLoading(false);
@@ -397,8 +397,8 @@ export default function Home() {
               <Typography
                 component="a"
                 href="https://twitter.com/rrahulol"
-                target="_blank"
-                rel="noopener noreferrer"
+          target="_blank"
+          rel="noopener noreferrer"
                 sx={{ 
                   color: '#ffffff',
                   textDecoration: 'none',
@@ -414,8 +414,8 @@ export default function Home() {
               <Typography
                 component="a"
                 href="https://rahul.fyi"
-                target="_blank"
-                rel="noopener noreferrer"
+          target="_blank"
+          rel="noopener noreferrer"
                 sx={{ 
                   color: '#ffffff',
                   textDecoration: 'none',

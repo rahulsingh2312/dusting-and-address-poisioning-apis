@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { Connection, PublicKey } from '@solana/web3.js';
 
-// Initialize Solana connection
-const connection = new Connection('https://mainnet.helius-rpc.com/?api-key=397b5828-cbba-479e-992e-7000c78d482b');
+// Initialize Solana connection with environment variable
+const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_RPC_API_KEY}`);
 
 // Stricter thresholds for dusting detection
 const DUSTING_THRESHOLDS = {
@@ -71,7 +71,6 @@ async function checkSNS(walletAddress: string): Promise<SNSData | null> {
   try {
     console.log(`\nChecking SNS for wallet: ${walletAddress}`);
     
-    // Fetch domains from Solana.fm API
     const response = await fetch(
       `https://socials.solana.fm/search?searchQuery=${walletAddress}&network=Mainnet`,
       {
@@ -84,41 +83,39 @@ async function checkSNS(walletAddress: string): Promise<SNSData | null> {
       }
     );
 
-    if (!response.ok) {
-      console.error('Failed to fetch domains from Solana.fm:', response.statusText);
+    if (!response?.ok) {
+      console.error('Failed to fetch domains from Solana.fm:', response?.statusText);
       return null;
     }
 
     const data = await response.json();
     console.log('Solana.fm API response:', JSON.stringify(data, null, 2));
 
-    // Extract domains from the response
-    const domains = data.labelSearch
-      ?.filter((item: any) => item.document?.entityType === 'Domains')
-      .map((item: any) => item.document?.name)
+    const domains = data?.labelSearch
+      ?.filter((item: any) => item?.document?.entityType === 'Domains')
+      .map((item: any) => item?.document?.name)
       .filter(Boolean) || [];
 
-    console.log(`Found ${domains.length} domains`);
-    domains.forEach((domain: string, index: number) => {
+    console.log(`Found ${domains?.length} domains`);
+    domains?.forEach((domain: string, index: number) => {
       console.log(`${index + 1}. ${domain}`);
     });
 
-    if (domains.length === 0) {
+    if (!domains?.length) {
       console.log('No domains found for this wallet');
       return null;
     }
 
-    // Check all domains for suspicious patterns
     const suspiciousDomains = domains.filter((domain: string) => {
-      const name = domain.toLowerCase();
+      const name = domain?.toLowerCase();
       const isSuspicious = KNOWN_DUSTING_SNS_PATTERNS.some(pattern => 
-        name.includes(pattern.toLowerCase())
+        name?.includes(pattern.toLowerCase())
       ) || EMOJI_REGEX.test(domain);
       
       if (isSuspicious) {
         console.log(`\nSuspicious domain detected: ${domain}`);
         if (EMOJI_REGEX.test(domain)) console.log('Contains emojis');
-        if (KNOWN_DUSTING_SNS_PATTERNS.some(pattern => name.includes(pattern.toLowerCase()))) {
+        if (KNOWN_DUSTING_SNS_PATTERNS.some(pattern => name?.includes(pattern.toLowerCase()))) {
           console.log('Contains suspicious keywords');
         }
       }
@@ -126,15 +123,15 @@ async function checkSNS(walletAddress: string): Promise<SNSData | null> {
       return isSuspicious;
     });
 
-    if (suspiciousDomains.length === 0) {
+    if (!suspiciousDomains?.length) {
       console.log('\nNo suspicious domains found');
       return null;
     }
 
-    const domain = suspiciousDomains[0]; // Take the first suspicious domain
-    const name = domain.toLowerCase();
+    const domain = suspiciousDomains[0];
+    const name = domain?.toLowerCase();
     const hasSuspiciousPattern = KNOWN_DUSTING_SNS_PATTERNS.some(pattern => 
-      name.includes(pattern.toLowerCase())
+      name?.includes(pattern.toLowerCase())
     );
     const containsEmojis = EMOJI_REGEX.test(domain);
     
@@ -166,116 +163,138 @@ export async function GET(request: Request) {
     const analysis = await analyzeWallet(walletAddress);
     return NextResponse.json(analysis);
   } catch (error) {
+    console.error('Error analyzing wallet:', error);
     return NextResponse.json(
-      { error: 'Failed to analyze wallet' },
-      { status: 500 }
+      { 
+        error: 'Failed to analyze wallet',
+        message: 'Service temporarily unavailable contact @rrahulol on x for premium service',
+        status: 'BUSY contact @rrahulol on x for premium service'
+      },
+      { status: 503 }
     );
   }
 }
 
 async function analyzeWallet(walletAddress: string): Promise<DustingAnalysis> {
-  const publicKey = new PublicKey(walletAddress);
-  const suspiciousPatterns: string[] = [];
-  let confidence = 0;
-  
-  // Check SNS
-  const snsData = await checkSNS(walletAddress);
-  if (snsData?.hasSuspiciousPattern) {
-    confidence += 30;
-    suspiciousPatterns.push(`Suspicious SNS name: ${snsData.name}`);
-  }
-  if (snsData?.containsEmojis) {
-    confidence += 20;
-    suspiciousPatterns.push('SNS contains emojis');
-  }
+  try {
+    const publicKey = new PublicKey(walletAddress);
+    const suspiciousPatterns: string[] = [];
+    let confidence = 0;
+    
+    const snsData = await checkSNS(walletAddress);
+    if (snsData?.hasSuspiciousPattern) {
+      confidence += 30;
+      suspiciousPatterns.push(`Suspicious SNS name: ${snsData?.name}`);
+      if (snsData?.containsEmojis) {
+        suspiciousPatterns.push('SNS contains emojis');
+      }
+    }
 
-  // Get recent transactions
-  const signatures = await connection.getSignaturesForAddress(publicKey, { limit: DUSTING_THRESHOLDS.MIN_TRANSACTIONS_CHECKED });
-  
-  // If we don't have enough transactions, return early with low risk
-  if (signatures.length < DUSTING_THRESHOLDS.MIN_TRANSACTIONS_CHECKED) {
+    const signatures = await connection.getSignaturesForAddress(publicKey, { 
+      limit: DUSTING_THRESHOLDS.MIN_TRANSACTIONS_CHECKED 
+    }).catch(() => []);
+
+    if (!signatures?.length || signatures.length < DUSTING_THRESHOLDS.MIN_TRANSACTIONS_CHECKED) {
+      return {
+        isDustingWallet: false,
+        confidence: 0,
+        metrics: {
+          tps: 0,
+          dustTransactions: 0,
+          totalTransactionsChecked: signatures?.length || 0,
+          uniqueRecipients: 0,
+          averageDustAmount: 0,
+          suspiciousSNS: snsData
+        },
+        suspiciousPatterns,
+        riskLevel: 'LOW'
+      };
+    }
+
+    const transactions = await Promise.all(
+      signatures.map(sig => 
+        connection.getTransaction(sig?.signature)
+          .catch(() => null)
+      )
+    ).then(txs => txs.filter(Boolean));
+
+    const firstBlockTime = signatures?.[0]?.blockTime;
+    const lastBlockTime = signatures?.[signatures.length - 1]?.blockTime;
+    const timeSpan = firstBlockTime && lastBlockTime
+      ? (firstBlockTime - lastBlockTime) / 1000
+      : 0;
+    const tps = timeSpan > 0 ? transactions.length / timeSpan : 0;
+
+    const dustTransactions = transactions.filter(tx => {
+      const preBalance = tx?.meta?.preBalances?.[0];
+      const postBalance = tx?.meta?.postBalances?.[0];
+      if (preBalance === undefined || postBalance === undefined) return false;
+      const amount = (preBalance - postBalance) / 1e9;
+      return amount < DUSTING_THRESHOLDS.MIN_DUST_AMOUNT;
+    }).length;
+
+    const uniqueRecipients = new Set(
+      transactions
+        .filter(tx => tx?.transaction?.message?.instructions?.[0]?.programIdIndex === 0)
+        .map(tx => tx?.transaction?.message?.accountKeys?.[1]?.toString())
+        .filter(Boolean)
+    ).size;
+
+    const dustAmounts = transactions
+      .map(tx => {
+        const preBalance = tx?.meta?.preBalances?.[0];
+        const postBalance = tx?.meta?.postBalances?.[0];
+        if (preBalance === undefined || postBalance === undefined) return null;
+        return (preBalance - postBalance) / 1e9;
+      })
+      .filter((amount): amount is number => 
+        amount !== null && amount < DUSTING_THRESHOLDS.MIN_DUST_AMOUNT
+      );
+    
+    const averageDustAmount = dustAmounts.length > 0
+      ? dustAmounts.reduce((a, b) => a + b, 0) / dustAmounts.length
+      : 0;
+
+    if (tps > DUSTING_THRESHOLDS.MIN_TPS) {
+      confidence += 40;
+      suspiciousPatterns.push(`High TPS detected: ${tps.toFixed(2)}`);
+    }
+    if (dustTransactions > DUSTING_THRESHOLDS.MIN_DUST_TRANSACTIONS) {
+      confidence += 20;
+      suspiciousPatterns.push(`High number of dust transactions: ${dustTransactions}/${transactions.length}`);
+    }
+    if (uniqueRecipients > DUSTING_THRESHOLDS.MIN_UNIQUE_RECIPIENTS) {
+      confidence += 10;
+      suspiciousPatterns.push(`High number of unique recipients: ${uniqueRecipients}`);
+    }
+
+    let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'LOW';
+    if (confidence >= 80 && tps > DUSTING_THRESHOLDS.MIN_TPS && dustTransactions > DUSTING_THRESHOLDS.MIN_DUST_TRANSACTIONS) {
+      riskLevel = 'CRITICAL';
+    } else if (confidence >= 60 && (tps > DUSTING_THRESHOLDS.MIN_TPS || dustTransactions > DUSTING_THRESHOLDS.MIN_DUST_TRANSACTIONS)) {
+      riskLevel = 'HIGH';
+    } else if (confidence >= 30 && (tps > DUSTING_THRESHOLDS.MIN_TPS || dustTransactions > DUSTING_THRESHOLDS.MIN_DUST_TRANSACTIONS)) {
+      riskLevel = 'MEDIUM';
+    }
+
+    const isDustingWallet = riskLevel === 'HIGH' || riskLevel === 'CRITICAL';
+
     return {
-      isDustingWallet: false,
-      confidence: 0,
+      isDustingWallet,
+      confidence,
       metrics: {
-        tps: 0,
-        dustTransactions: 0,
-        totalTransactionsChecked: signatures.length,
-        uniqueRecipients: 0,
-        averageDustAmount: 0,
+        tps,
+        dustTransactions,
+        totalTransactionsChecked: transactions.length,
+        uniqueRecipients,
+        averageDustAmount,
         suspiciousSNS: snsData
       },
-      suspiciousPatterns: [],
-      riskLevel: 'LOW'
+      suspiciousPatterns,
+      riskLevel
     };
+  } catch (error) {
+    console.error('Error in analyzeWallet:', error);
+    throw error;
   }
-
-  const transactions = await Promise.all(
-    signatures.map(sig => connection.getTransaction(sig.signature))
-  );
-
-  // Calculate TPS
-  const timeSpan = (signatures[0].blockTime! - signatures[signatures.length - 1].blockTime!) / 1000;
-  const tps = transactions.length / timeSpan;
-
-  // Check for dust transactions
-  const dustTransactions = transactions.filter(tx => {
-    const amount = (tx?.meta?.preBalances[0]! - tx?.meta?.postBalances[0]!) / 1e9;
-    return amount < DUSTING_THRESHOLDS.MIN_DUST_AMOUNT;
-  }).length;
-
-  // Count unique recipients
-  const uniqueRecipients = new Set(
-    transactions
-      .filter(tx => tx?.transaction.message.instructions[0]?.programIdIndex === 0)
-      .map(tx => tx?.transaction.message.accountKeys[1]?.toString())
-  ).size;
-
-  // Calculate average dust amount
-  const dustAmounts = transactions
-    .map(tx => (tx?.meta?.preBalances[0]! - tx?.meta?.postBalances[0]!) / 1e9)
-    .filter(amount => amount < DUSTING_THRESHOLDS.MIN_DUST_AMOUNT);
-  const averageDustAmount = dustAmounts.reduce((a, b) => a + b, 0) / dustAmounts.length;
-
-  // Add metrics based on findings with stricter thresholds
-  if (tps > DUSTING_THRESHOLDS.MIN_TPS) {
-    confidence += 40;
-    suspiciousPatterns.push(`High TPS detected: ${tps.toFixed(2)}`);
-  }
-  if (dustTransactions > DUSTING_THRESHOLDS.MIN_DUST_TRANSACTIONS) {
-    confidence += 20;
-    suspiciousPatterns.push(`High number of dust transactions: ${dustTransactions}`);
-  }
-  if (uniqueRecipients > DUSTING_THRESHOLDS.MIN_UNIQUE_RECIPIENTS) {
-    confidence += 10;
-    suspiciousPatterns.push(`Multiple unique recipients: ${uniqueRecipients}`);
-  }
-
-  // Determine risk level with stricter criteria
-  let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'LOW';
-  if (confidence >= 80 && tps > DUSTING_THRESHOLDS.MIN_TPS && dustTransactions > DUSTING_THRESHOLDS.MIN_DUST_TRANSACTIONS) {
-    riskLevel = 'CRITICAL';
-  } else if (confidence >= 60 && (tps > DUSTING_THRESHOLDS.MIN_TPS || dustTransactions > DUSTING_THRESHOLDS.MIN_DUST_TRANSACTIONS)) {
-    riskLevel = 'HIGH';
-  } else if (confidence >= 30 && (tps > DUSTING_THRESHOLDS.MIN_TPS || dustTransactions > DUSTING_THRESHOLDS.MIN_DUST_TRANSACTIONS)) {
-    riskLevel = 'MEDIUM';
-  }
-
-  // Only mark as dusting if multiple criteria are met
-  const isDustingWallet = riskLevel === 'HIGH' || riskLevel === 'CRITICAL';
-
-  return {
-    isDustingWallet,
-    confidence,
-    metrics: {
-      tps,
-      dustTransactions,
-      totalTransactionsChecked: transactions.length,
-      uniqueRecipients,
-      averageDustAmount,
-      suspiciousSNS: snsData
-    },
-    suspiciousPatterns,
-    riskLevel
-  };
 } 
