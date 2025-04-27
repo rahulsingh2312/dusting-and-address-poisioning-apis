@@ -1,36 +1,133 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Solana Dusting Detection API
 
-## Getting Started
+A robust API for detecting dusting attacks and address poisoning on Solana wallets. This API analyzes wallet transactions and SNS (Solana Name Service) data to identify suspicious patterns associated with dusting attacks.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Transaction pattern analysis
+- SNS (Solana Name Service) monitoring
+- Emoji detection in domain names
+- TPS (Transactions Per Second) monitoring
+- Dust transaction detection
+- Unique recipient tracking
+- Risk level assessment
+
+## API Endpoints
+
+### GET /api/dusting
+
+Analyzes a wallet address for dusting patterns.
+
+**Query Parameters:**
+- `address`: Solana wallet address to analyze
+
+**Response:**
+```json
+{
+  "isDustingWallet": boolean,
+  "confidence": number,
+  "metrics": {
+    "tps": number,
+    "dustTransactions": number,
+    "totalTransactionsChecked": number,
+    "uniqueRecipients": number,
+    "averageDustAmount": number,
+    "suspiciousSNS": {
+      "name": string,
+      "hasSuspiciousPattern": boolean,
+      "containsEmojis": boolean
+    }
+  },
+  "suspiciousPatterns": string[],
+  "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+}
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Detection Methods
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 1. Transaction Analysis
+- Checks last 10 transactions
+- Calculates TPS (Transactions Per Second)
+- Identifies dust transactions (amount < 0.0001 SOL)
+- Tracks unique recipients
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 2. SNS (Solana Name Service) Monitoring
+- Fetches domains associated with the wallet
+- Checks for suspicious patterns in domain names
+- Detects emojis in domain names
+- Monitors for known dusting-related keywords
 
-## Learn More
+### 3. Risk Assessment
+- Combines multiple factors to determine risk level
+- Assigns confidence scores based on detected patterns
+- Categorizes risk as LOW, MEDIUM, HIGH, or CRITICAL
 
-To learn more about Next.js, take a look at the following resources:
+## RPC Usage
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The API makes the following RPC calls:
+1. `getSignaturesForAddress`: Fetches recent transaction signatures
+2. `getTransaction`: Retrieves transaction details for each signature
+3. SNS API call to Solana.fm for domain information
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Total RPC calls per request: 2 + (number of transactions checked)
 
-## Deploy on Vercel
+## Detection Thresholds
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```typescript
+const DUSTING_THRESHOLDS = {
+  MIN_TPS: 5,                    // Minimum TPS to be considered suspicious
+  MIN_DUST_TRANSACTIONS: 9,      // Minimum number of dust transactions
+  MIN_DUST_AMOUNT: 0.0001,       // Maximum amount to be considered dust (in SOL)
+  MIN_UNIQUE_RECIPIENTS: 9,      // Minimum number of unique recipients
+  MIN_TRANSACTIONS_CHECKED: 10   // Minimum number of transactions to analyze
+};
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Suspicious Pattern Detection
+
+### SNS Patterns
+- Gambling/Casino related keywords
+- Airdrop/Free token related keywords
+- Scam indicators
+- Urgency/Time pressure keywords
+- Financial incentives
+- Suspicious actions
+- Common scam domains
+
+### Transaction Patterns
+- High TPS (> 5 transactions/second)
+- Multiple dust transactions (> 9)
+- Multiple unique recipients (> 9)
+- Small transaction amounts (< 0.0001 SOL)
+
+## Risk Level Calculation
+
+- **CRITICAL**: Confidence ≥ 80, High TPS, Multiple dust transactions
+- **HIGH**: Confidence ≥ 60, High TPS or Multiple dust transactions
+- **MEDIUM**: Confidence ≥ 30, High TPS or Multiple dust transactions
+- **LOW**: Default level, no significant suspicious patterns
+
+## Error Handling
+
+The API includes comprehensive error handling:
+- Optional chaining for all object properties
+- Null checks with default values
+- Try-catch blocks with error logging
+- "BUSY" status for service unavailability
+
+## Rate Limiting
+
+The API implements rate limiting to prevent abuse:
+- 100 requests per minute per IP
+- Returns 429 status with "BUSY" message when limit exceeded
+
+## Environment Variables
+
+Required environment variables:
+```
+HELIUS_RPC_API_KEY=your_api_key_here
+```
+
+## Contributing
+
+Feel free to submit issues and enhancement requests!
