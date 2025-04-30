@@ -46,7 +46,7 @@ export default function SpamScamSafe() {
   };
 
   return (
-    <div className="container text-black mx-auto p-4">
+    <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Spam & Scam Safe Transactions</h1>
       
       <form onSubmit={handleSubmit} className="mb-4">
