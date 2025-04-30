@@ -43,6 +43,37 @@ Analyzes a wallet address for dusting patterns.
 }
 ```
 
+### GET /api/transactionid
+
+Analyzes a specific transaction for dusting patterns.
+
+**Query Parameters:**
+- `address`: Transaction ID to analyze
+
+**Response:**
+```json
+{
+  "isDustingTransaction": boolean,
+  "confidence": number,
+  "transaction": {
+    "signature": string,
+    "timestamp": number,
+    "amount": number,
+    "sender": string,
+    "receiver": string,
+    "type": "SEND" | "RECEIVE",
+    "assetType": "SOL" | "TOKEN"
+  },
+  "senderSNS": {
+    "name": string,
+    "hasSuspiciousPattern": boolean,
+    "containsEmojis": boolean
+  } | null,
+  "suspiciousPatterns": string[],
+  "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+}
+```
+
 ## Detection Methods
 
 ### 1. Transaction Analysis
