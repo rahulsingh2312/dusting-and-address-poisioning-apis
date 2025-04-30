@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { Connection, PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey, ParsedTransactionWithMeta } from '@solana/web3.js';
 
 // Initialize Solana connection with environment variable
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_RPC_API_KEY}`);
@@ -58,6 +58,7 @@ interface TransactionAnalysis {
     sender: string;
     receiver: string;
     type: 'SEND' | 'RECEIVE';
+    assetType: 'SOL' | 'TOKEN';
   };
   senderSNS: SNSData | null;
   suspiciousPatterns: string[];
@@ -172,9 +173,48 @@ export async function GET(request: Request) {
   }
 }
 
+// Helper function to determine if a transaction involves token transfers
+function isTokenTransaction(transaction: ParsedTransactionWithMeta): boolean {
+  try {
+    // Check if this is a token program transaction
+    const instructions = transaction.transaction.message.instructions;
+    const tokenProgramId = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    const associatedTokenProgramId = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+    
+    // Check if any instruction involves the token programs
+    for (const instruction of instructions) {
+      if (instruction.programId && 
+          (instruction.programId.equals(tokenProgramId) || 
+           instruction.programId.equals(associatedTokenProgramId))) {
+        return true;
+      }
+    }
+    
+    // Also check for parsed instructions that might indicate token transfers
+    if (transaction.meta?.logMessages) {
+      for (const log of transaction.meta.logMessages) {
+        if (log.includes('spl-token') || 
+            log.includes('Token') || 
+            log.includes('transfer') || 
+            log.includes('Transfer')) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error checking if transaction involves tokens:', error);
+    return false;
+  }
+}
+
 async function analyzeTransaction(transactionId: string): Promise<TransactionAnalysis> {
   try {
-    const transaction = await connection.getTransaction(transactionId);
+    const transaction = await connection.getParsedTransaction(transactionId, {
+      maxSupportedTransactionVersion: 0,
+      commitment: 'confirmed'
+    });
     
     if (!transaction) {
       throw new Error('Transaction not found');
@@ -187,18 +227,28 @@ async function analyzeTransaction(transactionId: string): Promise<TransactionAna
       throw new Error('Invalid transaction data');
     }
 
-    const amount = Math.abs(preBalance - postBalance) / 1e9;
-    const sender = transaction.transaction.message.accountKeys[0]?.toString();
-    const receiver = transaction.transaction.message.accountKeys[1]?.toString();
+    
+    const sender = transaction.transaction.message.accountKeys[0]?.pubkey.toString();
+    const receiver = transaction.transaction.message.accountKeys[1]?.pubkey.toString();
     const type = preBalance > postBalance ? 'SEND' : 'RECEIVE';
+    
+    // Determine if this is a token transaction
+    const isToken = isTokenTransaction(transaction);
+    const assetType = isToken ? 'TOKEN' : 'SOL';
+    const amount = assetType === 'SOL' 
+      ? Math.abs(preBalance - postBalance) / 1e9 
+      :  0;
 
     const suspiciousPatterns: string[] = [];
     let confidence = 0;
 
-    // Check if it's a dust transaction
-    if (amount < DUSTING_THRESHOLDS.MIN_DUST_AMOUNT) {
+    // Only consider SOL transfers for dust detection
+    if (assetType === 'SOL' && amount < DUSTING_THRESHOLDS.MIN_DUST_AMOUNT) {
       confidence += 50;
       suspiciousPatterns.push(`Dust amount detected: ${amount} SOL`);
+    } else if (assetType === 'TOKEN') {
+      // For token transfers, we don't consider them dust
+      console.log('Token transfer detected - not considered as dust');
     }
 
     // Check sender's SNS
@@ -213,15 +263,25 @@ async function analyzeTransaction(transactionId: string): Promise<TransactionAna
 
     // Determine risk level
     let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'LOW';
-    if (confidence >= 80) {
-      riskLevel = 'CRITICAL';
-    } else if (confidence >= 60) {
-      riskLevel = 'HIGH';
-    } else if (confidence >= 30) {
-      riskLevel = 'MEDIUM';
+    
+    // If it's a token transfer, cap the risk level
+    if (assetType === 'TOKEN') {
+      // For tokens, we don't consider them dust attacks
+      confidence = Math.min(confidence, 20); // Cap confidence for token transfers
+      riskLevel = 'LOW'; // Always set token transfers to LOW risk
+    } else {
+      // For SOL transfers, use the regular risk assessment
+      if (confidence >= 80) {
+        riskLevel = 'CRITICAL';
+      } else if (confidence >= 60) {
+        riskLevel = 'HIGH';
+      } else if (confidence >= 30) {
+        riskLevel = 'MEDIUM';
+      }
     }
 
-    const isDustingTransaction = riskLevel === 'HIGH' || riskLevel === 'CRITICAL';
+    // Only mark as dusting if it's SOL and high risk
+    const isDustingTransaction = assetType === 'SOL' && (riskLevel === 'HIGH' || riskLevel === 'CRITICAL');
 
     return {
       isDustingTransaction,
@@ -232,7 +292,8 @@ async function analyzeTransaction(transactionId: string): Promise<TransactionAna
         amount,
         sender,
         receiver,
-        type
+        type,
+        assetType
       },
       senderSNS,
       suspiciousPatterns,
@@ -242,4 +303,4 @@ async function analyzeTransaction(transactionId: string): Promise<TransactionAna
     console.error('Error in analyzeTransaction:', error);
     throw error;
   }
-} 
+}

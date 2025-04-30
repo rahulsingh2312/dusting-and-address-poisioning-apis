@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Container, TextField, Button, Box, Typography, CircularProgress, Paper, Divider, Alert, Snackbar } from '@mui/material';
+import { Container, TextField, Button, Box, Typography, CircularProgress, Paper, Divider, Alert, Snackbar, RadioGroup, FormControlLabel, Radio, FormControl } from '@mui/material';
 import { PlayArrow, ContentCopy, Twitter, Link as LinkIcon, Search } from '@mui/icons-material';
 import DustingResults from './components/DustingResults';
 
@@ -12,6 +12,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState({ open: false, message: '', type: 'info' });
   const [showInput, setShowInput] = useState(true);
+  const [analysisType, setAnalysisType] = useState<'wallet' | 'transaction'>('wallet');
 
   const truncateAddress = (addr: string) => {
     if (!addr) return '';
@@ -24,12 +25,19 @@ export default function Home() {
     setError('');
     setResults(null);
     setShowInput(false);
-    setToast({ open: true, message: 'Analyzing wallet address...', type: 'success' });
+    
+    const analysisTypeText = analysisType === 'wallet' ? 'wallet address' : 'transaction ID';
+    setToast({ open: true, message: `Analyzing ${analysisTypeText}...`, type: 'success' });
 
     try {
-      const response = await fetch(`/api/dusting?address=${address}`);
+      // Use different API endpoint based on analysis type
+      const endpoint = analysisType === 'wallet' 
+        ? `/api/dusting?address=${address}`
+        : `/api/transactionid?address=${address}`;
+      
+      const response = await fetch(endpoint);
       if (!response.ok) {
-        throw new Error('Failed to analyze wallet please try again or contact @rrahulol on x for premium service');
+        throw new Error(`Failed to analyze ${analysisTypeText}, please try again or contact @rrahulol on x for premium service`);
       }
       const data = await response.json();
       setResults(data);
@@ -39,7 +47,7 @@ export default function Home() {
         setError(err.message);
         setToast({ open: true, message: err.message, type: 'error' });
       } else {
-        setError('An unknown error occurred please try again or contact @rrahulol on x for premium service');
+        setError(`An unknown error occurred please try again or contact @rrahulol on x for premium service`);
         setToast({ open: true, message: 'An unknown error occurred please try again or contact @rrahulol on x for premium service ', type: 'error' });
       }
     } finally {
@@ -59,8 +67,21 @@ export default function Home() {
     setToast({ open: true, message, type: 'info' });
   };
 
-  const apiEndpoint = `${"https://dustb.vercel.app"}/api/dusting?address=${address}`;
-  const displayEndpoint = `${"https://dustb.vercel.app"}/api/dusting?address=${truncateAddress(address)}`;
+  const getApiEndpoint = () => {
+    return analysisType === 'wallet'
+      ? `${"https://spam2s.cam"}/api/dusting?address=${address}`
+      : `${"https://spam2s.cam"}/api/transactionid?address=${address}`;
+  };
+
+  const getDisplayEndpoint = () => {
+    return analysisType === 'wallet'
+      ? `${"https://spam2s.cam"}/api/dusting?address=${truncateAddress(address)}`
+      : `${"https://spam2s.cam"}/api/transactionid?address=${truncateAddress(address)}`;
+  };
+
+  const getPlaceholder = () => {
+    return analysisType === 'wallet' ? "Enter wallet address" : "Enter transaction ID";
+  };
 
   return (
     <Box sx={{ 
@@ -121,6 +142,8 @@ export default function Home() {
           }}
         >
           <Box sx={{ 
+            fontFamily: 'monospace',
+            fontSize: '1.2rem',
             display: 'flex', 
             justifyContent: 'space-between', 
             alignItems: 'center',
@@ -133,7 +156,7 @@ export default function Home() {
               <Button
                 size="small"
                 startIcon={<ContentCopy />}
-                onClick={() => copyToClipboard(apiEndpoint, 'API endpoint copied to clipboard')}
+                onClick={() => copyToClipboard(getApiEndpoint(), 'API endpoint copied to clipboard')}
                 sx={{
                   backgroundColor: 'rgba(255, 255, 255, 0.1)',
                   color: '#ffffff',
@@ -202,63 +225,110 @@ export default function Home() {
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap'
               }}>
-                {displayEndpoint}
+                {getDisplayEndpoint()}
               </Typography>
             </Box>
             {showInput && (
               <Box sx={{ 
                 display: 'flex', 
+                flexDirection: 'column',
                 gap: 1,
                 width: { xs: '100%', sm: 'auto' }
               }}>
-                <TextField
-                  size="small"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Enter wallet address"
-                  sx={{
-                    flex: 1,
-                    minWidth: { md: '300px' },
-                    '& .MuiOutlinedInput-root': {
-                      backgroundColor: '#1a1a1a',
+                <FormControl sx={{ my: 1 }}>
+                  <RadioGroup
+                    row
+                    value={analysisType}
+                    onChange={(e) => setAnalysisType(e.target.value as 'wallet' | 'transaction')}
+                   >
+                    <FormControlLabel 
+                      value="wallet" 
+                      control={
+                        <Radio 
+                          sx={{
+                            color: '#ffffff',
+                            '&.Mui-checked': {
+                              color: '#ffffff',
+                            },
+                          }}
+                        />
+                      } 
+                      label={
+                        <Typography sx={{ color: '#ffffff' }}>
+                          Wallet Address
+                        </Typography>
+                      }
+                    />
+                    <FormControlLabel 
+                      value="transaction" 
+                      control={
+                        <Radio 
+                          sx={{
+                            color: '#ffffff',
+                            '&.Mui-checked': {
+                              color: '#ffffff',
+                            },
+                          }}
+                        />
+                      } 
+                      label={
+                        <Typography sx={{ color: '#ffffff' }}>
+                          Transaction ID
+                        </Typography>
+                      }
+                    />
+                  </RadioGroup>
+                </FormControl>
+                <Box sx={{ display: 'flex', gap: 1, width: '100%' }}>
+                  <TextField
+                    size="small"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder={getPlaceholder()}
+                    sx={{
+                      flex: 1,
+                      minWidth: { md: '300px' },
+                      '& .MuiOutlinedInput-root': {
+                        backgroundColor: '#1a1a1a',
+                        borderRadius: '20px',
+                        '& fieldset': {
+                          borderColor: '#333',
+                        },
+                        '&:hover fieldset': {
+                          borderColor: '#ffffff',
+                        },
+                        '&.Mui-focused fieldset': {
+                          borderColor: '#ffffff',
+                        },
+                      },
+                      '& .MuiInputBase-input': {
+                        color: '#ffffff',
+                        fontFamily: 'monospace',
+                      },
+                    }}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={handleSubmit}
+                    disabled={loading || !address}
+                    startIcon={loading ? <CircularProgress size={20} /> : <PlayArrow />}
+                    sx={{
+                      backgroundColor: '#ffffff',
+                      color: '#000000',
                       borderRadius: '20px',
-                      '& fieldset': {
-                        borderColor: '#333',
+                      '&:hover': {
+                        backgroundColor: '#e0e0e0',
                       },
-                      '&:hover fieldset': {
-                        borderColor: '#ffffff',
-                      },
-                      '&.Mui-focused fieldset': {
-                        borderColor: '#ffffff',
-                      },
-                    },
-                    '& .MuiInputBase-input': {
-                      color: '#ffffff',
-                      fontFamily: 'monospace',
-                    },
-                  }}
-                />
-                <Button
-                  variant="contained"
-                  onClick={handleSubmit}
-                  disabled={loading || !address}
-                  startIcon={loading ? <CircularProgress size={20} /> : <PlayArrow />}
-                  sx={{
-                    backgroundColor: '#ffffff',
-                    color: '#000000',
-                    borderRadius: '20px',
-                    '&:hover': {
-                      backgroundColor: '#e0e0e0',
-                    },
-                    transition: 'all 0.3s ease',
-                    '&:disabled': {
-                      backgroundColor: '#424242',
-                      color: '#757575'
-                    }
-                  }}
-                >
-                  {loading ? 'Analyzing...' : 'Send Request'}
-                </Button>
+                      transition: 'all 0.3s ease',
+                      '&:disabled': {
+                        backgroundColor: '#424242',
+                        color: '#757575'
+                      }
+                    }}
+                  >
+                    {loading ? 'Analyzing...' : 'Send '}
+                  </Button>
+                </Box>
               </Box>
             )}
           </Box>
@@ -366,7 +436,7 @@ export default function Home() {
                 <Typography variant="h6" sx={{ mb: 2, color: '#ffffff', fontFamily: 'monospace' }}>
                   Analysis Results
                 </Typography>
-                <DustingResults analysis={results} />
+                <DustingResults analysis={results} analysisType={analysisType} />
               </Paper>
             </Box>
           </Box>
@@ -397,8 +467,8 @@ export default function Home() {
               <Typography
                 component="a"
                 href="https://twitter.com/rrahulol"
-          target="_blank"
-          rel="noopener noreferrer"
+                target="_blank"
+                rel="noopener noreferrer"
                 sx={{ 
                   color: '#ffffff',
                   textDecoration: 'none',
@@ -414,8 +484,8 @@ export default function Home() {
               <Typography
                 component="a"
                 href="https://rahul.fyi"
-          target="_blank"
-          rel="noopener noreferrer"
+                target="_blank"
+                rel="noopener noreferrer"
                 sx={{ 
                   color: '#ffffff',
                   textDecoration: 'none',
@@ -426,7 +496,7 @@ export default function Home() {
                   }
                 }}
               >
-                Website
+                rahul.fyi
               </Typography>
             </Box>
             <Typography variant="body2" color="text.secondary">
