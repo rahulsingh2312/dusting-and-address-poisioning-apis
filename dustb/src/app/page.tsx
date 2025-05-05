@@ -461,12 +461,12 @@ export default function Home() {
             gap: 2
           }}>
             <Typography variant="body2" color="text.secondary">
-              Created by @rrahulol
+              Created for helius [redacted] hackathon
             </Typography>
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Typography
                 component="a"
-                href="https://twitter.com/rrahulol"
+                href="https://x.com/spam2scam"
                 target="_blank"
                 rel="noopener noreferrer"
                 sx={{ 
@@ -481,7 +481,7 @@ export default function Home() {
               >
                 Twitter
               </Typography>
-              <Typography
+              {/* <Typography
                 component="a"
                 href="https://rahul.fyi"
                 target="_blank"
@@ -497,10 +497,10 @@ export default function Home() {
                 }}
               >
                 rahul.fyi
-              </Typography>
+              </Typography> */}
             </Box>
             <Typography variant="body2" color="text.secondary">
-              Solana Wallet: rAhULHBrf2yGuANDuAGLuUTKuLCW17t86T8T6vGcuok
+              Tip Wallet: GcqBZn9c5UgJ7mctm88HeHi28Ux7NCDrUHqBcWkfHX5J
             </Typography>
           </Box>
         </Container>
